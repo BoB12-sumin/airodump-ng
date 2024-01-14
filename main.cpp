@@ -40,6 +40,14 @@ void usage()
     printf("sample: airo-mon wlan0\n");
 }
 
+void adjust_offset_for_boundary(size_t &offset, size_t field_size)
+{
+    if (field_size % 2 == 0)
+    {
+        offset = (offset + 1) & ~1; // 2바이트 경계에 맞추기
+    }
+}
+
 void parse_radiotap_header(struct dot11 *header, size_t length)
 {
     // Check version
@@ -191,105 +199,103 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         }
     }
 
-    printf("Radiotap Fields:\n");
+    // printf("Radiotap Fields:\n");
     for (const auto &field : radiotap_fields)
     {
         printf("Field Type: %d, Size: %zu bytes\n", field.first, field.second);
     }
-    printf("offset:%d\n", offset);
+    // printf("offset:%d\n", offset);
 
     // radiotap_fields여기서 offset 부터 시작하여 radiotap_fields여기서를 처리하여 attena signal을 읽는 코드를 추가할 것
     int8_t rssi = 0;
+    int8_t antenna_noise = 0;
+    bool rssi_updated = false;
     // 필드 처리 루프
     for (const auto &field : radiotap_fields)
     {
-        printf("after offset:%d\n", offset);
-        if (field.second % 2 == 0)
-        {
-            offset = (offset + 1) & ~1; // 2바이트 경계에 맞추기
-        }
+        adjust_offset_for_boundary(offset, field.second);
 
         switch (field.first)
         {
         case IEEE80211_RADIOTAP_TSFT:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_FLAGS:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_RATE:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_CHANNEL:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_FHSS:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
             rssi = *(reinterpret_cast<const int8_t *>(header) + offset);
-            printf("Antenna Signal (RSSI): %d dBm\n", rssi);
-            offset += field.second;
+            // printf("Antenna Signal (RSSI): %d dBm\n", rssi);
+            rssi_updated = true; // 신호 강도 업데이트
             break;
         case IEEE80211_RADIOTAP_DBM_ANTNOISE:
             // DBM_ANTNOISE 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_LOCK_QUALITY:
             // LOCK_QUALITY 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_TX_ATTENUATION:
             // TX_ATTENUATION 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_DB_TX_ATTENUATION:
             // DB_TX_ATTENUATION 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_DBM_TX_POWER:
             // DBM_TX_POWER 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_ANTENNA:
             // ANTENNA 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_DB_ANTSIGNAL:
             // DB_ANTSIGNAL 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_DB_ANTNOISE:
             // DB_ANTNOISE 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_RX_FLAGS:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_TX_FLAGS:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_RTS_RETRIES:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_DATA_RETRIES:
-            offset += field.second;
+
             break;
         // 18번 필드는 정의되지 않았으므로 생략
         case IEEE80211_RADIOTAP_MCS:
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_AMPDU_STATUS:
             // AMPDU_STATUS 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_VHT:
             // VHT 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
         case IEEE80211_RADIOTAP_TIMESTAMP:
             // TIMESTAMP 필드 처리 (필요한 경우)
-            offset += field.second;
+
             break;
             // case IEEE80211_RADIOTAP_RADIOTAP_NAMESPACE:
             //     // RADIOTAP_NAMESPACE 필드 처리 (필요한 경우)
@@ -306,6 +312,15 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
             // 알 수 없는 필드 처리
             break;
         }
+        offset += field.second;
+
+        if (rssi_updated)
+        {
+            int8_t final_rssi = rssi - antenna_noise; // 노이즈가 없으면 0으로 가정
+            printf("Final Antenna Signal (RSSI): %d dBm\n", final_rssi);
+            rssi_updated = false;
+            antenna_noise = 0;
+        }
     }
 
     if (length < offset + 16)
@@ -313,7 +328,7 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         printf("Packet too short for BSSID\n");
         return;
     }
-    printf("offset1: %d\n", offset);
+    // printf("offset1: %d\n", offset);
 
     const uint8_t *frame_ptr = reinterpret_cast<const uint8_t *>(header) + radiolength; // beacon frame
     const uint8_t *bssid_ptr = frame_ptr + 16;
