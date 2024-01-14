@@ -47,9 +47,10 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
     }
 
     uint32_t present = header->it_present;
+    int radiolength = header->it_len;
     size_t offset = sizeof(dot11);
 
-    while (offset < length)
+    while (offset < radiolength)
     {
         if (present & (1 << IEEE80211_RADIOTAP_TSFT))
         {
@@ -65,7 +66,7 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         }
         if (present & (1 << IEEE80211_RADIOTAP_CHANNEL))
         {
-            // CHANNEL 필드 처리
+            // CHANNEL 필드 처리p
         }
         if (present & (1 << IEEE80211_RADIOTAP_FHSS))
         {
@@ -151,7 +152,10 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         if (present & (1 << IEEE80211_RADIOTAP_EXT))
         {
             // EXT 필드 처리 및 다음 it_present 확인
-            present = *reinterpret_cast<const uint32_t *>(header + offset);
+            present = *reinterpret_cast<const uint32_t *>(reinterpret_cast<const u_char *>(header) + offset);
+
+            // 다음 it_present 값 출력
+            printf("Next it_present: 0x%08x\n", present);
             offset += sizeof(uint32_t);
         }
         else
@@ -165,9 +169,28 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         printf("Packet too short for BSSID\n");
         return;
     }
+    printf("offset1: %d\n", offset);
 
-    const uint8_t *frame_ptr = reinterpret_cast<const uint8_t *>(header) + offset; // beacon frame
-    const uint8_t *bssid_ptr = frame_ptr + 16;                                     // 802.11 헤더로부터 16바이트 뒤
+    const uint8_t *frame_ptr = reinterpret_cast<const uint8_t *>(header) + radiolength; // beacon frame
+    const uint8_t *bssid_ptr = frame_ptr + 16;
+
+    printf("length: %d\n", radiolength); // 802.11 헤더로부터 16바이트 뒤
+
+    const uint16_t *beacon_field = reinterpret_cast<const uint16_t *>(frame_ptr);
+    uint16_t beacon_type = *beacon_field;
+    beacon_type = ntohs(beacon_type); // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
+
+    printf("Beacon Type: 0x%04x\n", beacon_type);
+    if (beacon_type == 0x8000)
+    {
+        printf("This is a Beacon Frame\n");
+    }
+    else
+    {
+        printf("This is not a Beacon Frame\n");
+    }
+
+    printf("802.11 Frame Type: ");
 
     printf("BSSID: ");
     for (int i = 0; i < 6; ++i)
@@ -175,6 +198,32 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         printf("%02x", bssid_ptr[i]);
         if (i < 5)
             printf(":");
+    }
+    printf("\n");
+
+    const size_t ieee80211_header_length = 24;
+
+    // 비콘 프레임 페이로드 시작점
+    const uint8_t *frame_payload_ptr = reinterpret_cast<const uint8_t *>(header) + radiolength + ieee80211_header_length;
+    const uint8_t *tagged_ptr = frame_payload_ptr;
+
+    const uint8_t *essid_ptr = reinterpret_cast<const uint8_t *>(tagged_ptr) + 12;
+    uint8_t essid_pkt = *essid_ptr;
+
+    const uint8_t *essid_len_ptr = reinterpret_cast<const uint8_t *>(essid_ptr) + 1;
+    uint8_t essid_len = *essid_len_ptr;
+
+    const uint8_t *essid_content_ptr = reinterpret_cast<const uint8_t *>(essid_ptr) + 2;
+    uint8_t essid_content = *essid_content_ptr;
+
+    printf("essid length: %d\n", essid_len);
+
+    printf("essid: ");
+
+    for (int i = 0; i < essid_len; ++i)
+    {
+        printf("%c", essid_content_ptr[i]);
+        printf("");
     }
     printf("\n");
 
@@ -194,7 +243,9 @@ int main(int argc, char *argv[])
     char *dev = argv[1];
 
     char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t *handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+    // pcap_t *handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+    pcap_t *handle = pcap_open_offline("./pcapdir/beacon-a2000ua-testap5g.pcap", errbuf);
+
     if (handle == nullptr)
     {
         fprintf(stderr, "couldn't open device %s(%s)\n", dev, errbuf);
