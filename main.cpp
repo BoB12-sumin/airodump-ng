@@ -12,6 +12,9 @@
 #include <thread>
 #include <chrono>
 #include "radiotab.h"
+#include <vector>
+#include <string>
+#include <utility>
 
 using namespace std;
 
@@ -49,24 +52,31 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
     uint32_t present = header->it_present;
     int radiolength = header->it_len;
     size_t offset = sizeof(dot11);
+    vector<pair<int, size_t>> radiotap_fields;
 
     while (offset < radiolength)
     {
         if (present & (1 << IEEE80211_RADIOTAP_TSFT))
         {
             // TSFT 필드 처리
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_TSFT, sizeof(uint64_t))); // 예시: TSFT는 8바이트
+            // offset += sizeof(uint64_t);
         }
         if (present & (1 << IEEE80211_RADIOTAP_FLAGS))
         {
-            // FLAGS 필드 처리
+            // FLAGS 필드 처리, 1byte
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_FLAGS, sizeof(uint8_t)));
+            // offset += sizeof(uint8_t);
         }
         if (present & (1 << IEEE80211_RADIOTAP_RATE))
         {
-            // RATE 필드 처리
+            // RATE 필드 처리, 1byte
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_RATE, sizeof(uint8_t)));
         }
         if (present & (1 << IEEE80211_RADIOTAP_CHANNEL))
         {
-            // CHANNEL 필드 처리p
+            // CHANNEL 필드 처리, 2byte
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_CHANNEL, sizeof(int32_t)));
         }
         if (present & (1 << IEEE80211_RADIOTAP_FHSS))
         {
@@ -74,15 +84,18 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         }
         if (present & (1 << IEEE80211_RADIOTAP_DBM_ANTSIGNAL))
         {
-            // DBM_ANTSIGNAL 필드 처리
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_DBM_ANTSIGNAL, sizeof(int8_t)));
+            // offset += sizeof(int8_t);
         }
         if (present & (1 << IEEE80211_RADIOTAP_DBM_ANTNOISE))
         {
             // DBM_ANTNOISE 필드 처리
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_DBM_ANTNOISE, sizeof(int8_t)));
         }
         if (present & (1 << IEEE80211_RADIOTAP_LOCK_QUALITY))
         {
             // LOCK_QUALITY 필드 처리
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_LOCK_QUALITY, sizeof(int16_t)));
         }
         if (present & (1 << IEEE80211_RADIOTAP_TX_ATTENUATION))
         {
@@ -99,6 +112,7 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         if (present & (1 << IEEE80211_RADIOTAP_ANTENNA))
         {
             // ANTENNA 필드 처리
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_ANTENNA, sizeof(int8_t)));
         }
         if (present & (1 << IEEE80211_RADIOTAP_DB_ANTSIGNAL))
         {
@@ -110,11 +124,13 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         }
         if (present & (1 << IEEE80211_RADIOTAP_RX_FLAGS))
         {
-            // RX_FLAGS 필드 처리
+            // RX_FLAGS 필드 처리, 2byte
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_RX_FLAGS, sizeof(int16_t)));
         }
         if (present & (1 << IEEE80211_RADIOTAP_TX_FLAGS))
         {
-            // TX_FLAGS 필드 처리
+            // TX_FLAGS 필드 처리, 2byte
+            radiotap_fields.push_back(make_pair(IEEE80211_RADIOTAP_TX_FLAGS, sizeof(int16_t)));
         }
         if (present & (1 << IEEE80211_RADIOTAP_RTS_RETRIES))
         {
@@ -143,7 +159,7 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         }
         if (present & (1 << IEEE80211_RADIOTAP_RADIOTAP_NAMESPACE))
         {
-            // RADIOTAP_NAMESPACE 필드 처리
+            // RADIOTAP_NAMESPACE 필드 처리, 0byste
         }
         if (present & (1 << IEEE80211_RADIOTAP_VENDOR_NAMESPACE))
         {
@@ -151,15 +167,130 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         }
         if (present & (1 << IEEE80211_RADIOTAP_EXT))
         {
-            // EXT 필드 처리 및 다음 it_present 확인
+            // EXT 필드 처리 및 다음 it_present 확인 4byte
             present = *reinterpret_cast<const uint32_t *>(reinterpret_cast<const u_char *>(header) + offset);
-
             // 다음 it_present 값 출력
             printf("Next it_present: 0x%08x\n", present);
             offset += sizeof(uint32_t);
         }
         else
         {
+            break;
+        }
+    }
+
+    // offset += sizeof(uint32_t);
+
+    printf("Radiotap Fields:\n");
+    for (const auto &field : radiotap_fields)
+    {
+        printf("Field Type: %d, Size: %zu bytes\n", field.first, field.second);
+    }
+    printf("offset:%d\n", offset);
+
+    // radiotap_fields여기서 offset 부터 시작하여 radiotap_fields여기서를 처리하여 attena signal을 읽는 코드를 추가할 것
+    int8_t rssi = 0;
+    // 필드 처리 루프
+    for (const auto &field : radiotap_fields)
+    {
+        if (field.second == 2)
+        {
+            offset = (offset + 1) & ~1; // 2바이트 경계에 맞추기
+        }
+        else if (field.second == 4)
+        {
+            offset = (offset + 3) & ~3; // 4바이트 경계에 맞추기
+        }
+        switch (field.first)
+        {
+        case IEEE80211_RADIOTAP_TSFT:
+            offset += sizeof(uint64_t);
+            break;
+        case IEEE80211_RADIOTAP_FLAGS:
+            offset += sizeof(uint8_t);
+            break;
+        case IEEE80211_RADIOTAP_RATE:
+            offset += sizeof(uint8_t);
+            break;
+        case IEEE80211_RADIOTAP_CHANNEL:
+            offset += sizeof(uint16_t);
+            break;
+        case IEEE80211_RADIOTAP_FHSS:
+            // FHSS 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
+            rssi = *(reinterpret_cast<const int8_t *>(header) + offset);
+            printf("Antenna Signal (RSSI): %d dBm\n", rssi);
+            offset += sizeof(int8_t);
+            break;
+        case IEEE80211_RADIOTAP_DBM_ANTNOISE:
+            // DBM_ANTNOISE 필드 처리 (필요한 경우)
+
+            break;
+        case IEEE80211_RADIOTAP_LOCK_QUALITY:
+            // LOCK_QUALITY 필드 처리 (필요한 경우)
+            offset += sizeof(uint16_t);
+            break;
+        case IEEE80211_RADIOTAP_TX_ATTENUATION:
+            // TX_ATTENUATION 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_DB_TX_ATTENUATION:
+            // DB_TX_ATTENUATION 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_DBM_TX_POWER:
+            // DBM_TX_POWER 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_ANTENNA:
+            // ANTENNA 필드 처리 (필요한 경우)
+            offset += sizeof(int8_t);
+            break;
+        case IEEE80211_RADIOTAP_DB_ANTSIGNAL:
+            // DB_ANTSIGNAL 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_DB_ANTNOISE:
+            // DB_ANTNOISE 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_RX_FLAGS:
+            offset += sizeof(uint16_t);
+            break;
+        case IEEE80211_RADIOTAP_TX_FLAGS:
+            offset += sizeof(uint16_t);
+            break;
+        case IEEE80211_RADIOTAP_RTS_RETRIES:
+            // RTS_RETRIES 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_DATA_RETRIES:
+            // DATA_RETRIES 필드 처리 (필요한 경우)
+            break;
+        // 18번 필드는 정의되지 않았으므로 생략
+        case IEEE80211_RADIOTAP_MCS:
+            // MCS 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_AMPDU_STATUS:
+            // AMPDU_STATUS 필드 처리 (필요한 경우)
+            offset += sizeof(uint32_t); // 필드 크기 예시
+            break;
+        case IEEE80211_RADIOTAP_VHT:
+            // VHT 필드 처리 (필요한 경우)
+            offset += sizeof(uint32_t); // 필드 크기 예시
+            break;
+        case IEEE80211_RADIOTAP_TIMESTAMP:
+            // TIMESTAMP 필드 처리 (필요한 경우)
+            offset += sizeof(uint64_t); // 필드 크기 예시
+            break;
+        case IEEE80211_RADIOTAP_RADIOTAP_NAMESPACE:
+            // RADIOTAP_NAMESPACE 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_VENDOR_NAMESPACE:
+            // VENDOR_NAMESPACE 필드 처리 (필요한 경우)
+            break;
+        case IEEE80211_RADIOTAP_EXT:
+            // EXT 필드 처리 및 다음 it_present 확인
+            // present = *reinterpret_cast<const uint32_t *>(reinterpret_cast<const u_char *>(header) + offset);
+            // offset += sizeof(uint32_t);
+            break;
+        default:
+            // 알 수 없는 필드 처리
             break;
         }
     }
@@ -279,7 +410,7 @@ int main(int argc, char *argv[])
 
         parse_radiotap_header(radiotap_hdr, header->caplen);
 
-        print_dot11(radiotap_hdr);
+        // print_dot11(radiotap_hdr);
 
         // for (int i = 0; i < (header->caplen); i++)
         // {
