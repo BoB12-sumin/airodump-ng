@@ -15,6 +15,8 @@
 #include <vector>
 #include <string>
 #include <utility>
+#include <cstring>
+#include <map>
 
 using namespace std;
 
@@ -25,6 +27,16 @@ struct dot11
     u_int16_t it_len;     /* entire length */
     u_int32_t it_present; /* fields present */
 } __attribute__((__packed__));
+
+struct BSSID_Info
+{
+    int rssi;
+    int channel;
+    int beacon_count;
+};
+
+// BSSID를 key로 사용하는 map 생성
+map<string, BSSID_Info> bssid_map;
 
 void print_dot11(struct dot11 *my_struct)
 {
@@ -40,6 +52,20 @@ void usage()
     printf("sample: airo-mon wlan0\n");
 }
 
+bool check_beacon_frame(const uint8_t *frame_ptr, size_t length)
+{
+    if (length < 2)
+    { // 프레임 타입 및 서브타입을 확인하기 위한 최소 길이
+        return false;
+    }
+
+    const uint16_t *type_sub_type_field = reinterpret_cast<const uint16_t *>(frame_ptr);
+    uint16_t type_sub_type = ntohs(*type_sub_type_field); // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
+
+    // Beacon frame의 타입 및 서브타입 값은 0x8000
+    return type_sub_type == 0x8000;
+}
+
 void adjust_offset_for_boundary(size_t &offset, size_t field_size)
 {
     if (field_size % 2 == 0)
@@ -48,6 +74,28 @@ void adjust_offset_for_boundary(size_t &offset, size_t field_size)
     }
 }
 
+// void process_beacon_frame(const uint8_t *bssid, int rssi, int channel)
+// {
+//     string bssid_str = bssid_to_string(bssid); // BSSID를 string으로 변환하는 함수 필요
+
+//     // BSSID 정보 업데이트
+//     if (bssid_map.find(bssid_str) == bssid_map.end())
+//     {
+//         // BSSID가 map에 없으면 새로 추가
+//         bssid_map[bssid_str] = {rssi, channel, 1};
+//     }
+//     else
+//     {
+//         // 이미 존재하는 BSSID면 정보 업데이트
+//         bssid_map[bssid_str].rssi = rssi;
+//         bssid_map[bssid_str].channel = channel;
+//         bssid_map[bssid_str].beacon_count++;
+//     }
+
+//     // 데이터 출력
+//     cout << "BSSID: " << bssid_str << ", RSSI: " << rssi << ", Channel: " << channel
+//          << ", Beacon Count: " << bssid_map[bssid_str].beacon_count << endl;
+// }
 void parse_radiotap_header(struct dot11 *header, size_t length)
 {
     // Check version
@@ -200,16 +248,18 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
     }
 
     // printf("Radiotap Fields:\n");
-    for (const auto &field : radiotap_fields)
-    {
-        printf("Field Type: %d, Size: %zu bytes\n", field.first, field.second);
-    }
+    // for (const auto &field : radiotap_fields)
+    // {
+    //     printf("Field Type: %d, Size: %zu bytes\n", field.first, field.second);
+    // }
     // printf("offset:%d\n", offset);
 
     // radiotap_fields여기서 offset 부터 시작하여 radiotap_fields여기서를 처리하여 attena signal을 읽는 코드를 추가할 것
     int8_t rssi = 0;
     int8_t antenna_noise = 0;
     bool rssi_updated = false;
+    uint16_t channel_frequency, channel_flags;
+    int channel;
     // 필드 처리 루프
     for (const auto &field : radiotap_fields)
     {
@@ -227,6 +277,31 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
 
             break;
         case IEEE80211_RADIOTAP_CHANNEL:
+
+            memcpy(&channel_frequency, reinterpret_cast<const uint8_t *>(header) + offset, sizeof(uint16_t));
+            memcpy(&channel_flags, reinterpret_cast<const uint8_t *>(header) + offset + sizeof(uint16_t), sizeof(uint16_t));
+
+            channel_frequency = le16toh(channel_frequency); // 주파수 변환
+            channel_flags = le16toh(channel_flags);         // 채널 플래그 변환
+
+            if (channel_frequency >= 2412 && channel_frequency <= 2484)
+            {
+                // 2.4GHz 대역
+                channel = (channel_frequency - 2412) / 5 + 1;
+            }
+            else if (channel_frequency >= 5000)
+            {
+                // 5GHz 대역
+                channel = (channel_frequency - 5000) / 5;
+            }
+            else
+            {
+                // 알 수 없는 주파수 대역
+                channel = -1;
+            }
+            // 채널 번호 사용
+
+            printf("channel: %d\n", channel);
 
             break;
         case IEEE80211_RADIOTAP_FHSS:
@@ -333,24 +408,6 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
     const uint8_t *frame_ptr = reinterpret_cast<const uint8_t *>(header) + radiolength; // beacon frame
     const uint8_t *bssid_ptr = frame_ptr + 16;
 
-    printf("length: %d\n", radiolength); // 802.11 헤더로부터 16바이트 뒤
-
-    const uint16_t *beacon_field = reinterpret_cast<const uint16_t *>(frame_ptr);
-    uint16_t beacon_type = *beacon_field;
-    beacon_type = ntohs(beacon_type); // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
-
-    printf("Beacon Type: 0x%04x\n", beacon_type);
-    if (beacon_type == 0x8000)
-    {
-        printf("This is a Beacon Frame\n");
-    }
-    else
-    {
-        printf("This is not a Beacon Frame\n");
-    }
-
-    printf("802.11 Frame Type: ");
-
     printf("BSSID: ");
     for (int i = 0; i < 6; ++i)
     {
@@ -386,6 +443,8 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
     }
     printf("\n");
 
+    printf("=================================================================");
+
     // beacon frame
 
     // 16bytes 뒤에 beacon frame의 BSSID 존재함.
@@ -403,7 +462,8 @@ int main(int argc, char *argv[])
 
     char errbuf[PCAP_ERRBUF_SIZE];
     // pcap_t *handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
-    pcap_t *handle = pcap_open_offline("./pcapdir/beacon-a2000ua-testap5g.pcap", errbuf);
+    // pcap_t *handle = pcap_open_offline("./pcapdir/beacon-a2000ua-testap5g.pcap", errbuf);
+    pcap_t *handle = pcap_open_offline("./pcapdir/dot11-sample.pcap", errbuf);
 
     if (handle == nullptr)
     {
@@ -435,6 +495,14 @@ int main(int argc, char *argv[])
         printf("%u bytes captured\n", header->caplen); // packet's lengt
 
         struct dot11 *radiotap_hdr = (struct dot11 *)packet;
+        const size_t ieee80211_header_length = 24;
+
+        if (!check_beacon_frame(reinterpret_cast<const uint8_t *>(radiotap_hdr) + (radiotap_hdr->it_len), header->caplen - (radiotap_hdr->it_len)))
+        {
+            printf("this's not a beacon\n");
+            continue;
+        }
+        printf("this's a beacon\n");
 
         parse_radiotap_header(radiotap_hdr, header->caplen);
 
