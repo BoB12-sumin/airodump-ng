@@ -17,6 +17,7 @@
 #include <utility>
 #include <cstring>
 #include <map>
+#include <iomanip>
 
 using namespace std;
 
@@ -30,9 +31,18 @@ struct dot11
 
 struct BSSID_Info
 {
+    int pwr; // pwr
+    int channel;
+    int beacons;
+    string essid;
+};
+
+struct RadiotapInfo
+{
     int rssi;
     int channel;
-    int beacon_count;
+    const uint8_t *bssid_ptr;
+    string essid;
 };
 
 // BSSID를 key로 사용하는 map 생성
@@ -73,36 +83,51 @@ void adjust_offset_for_boundary(size_t &offset, size_t field_size)
         offset = (offset + 1) & ~1; // 2바이트 경계에 맞추기
     }
 }
-
-// void process_beacon_frame(const uint8_t *bssid, int rssi, int channel)
-// {
-//     string bssid_str = bssid_to_string(bssid); // BSSID를 string으로 변환하는 함수 필요
-
-//     // BSSID 정보 업데이트
-//     if (bssid_map.find(bssid_str) == bssid_map.end())
-//     {
-//         // BSSID가 map에 없으면 새로 추가
-//         bssid_map[bssid_str] = {rssi, channel, 1};
-//     }
-//     else
-//     {
-//         // 이미 존재하는 BSSID면 정보 업데이트
-//         bssid_map[bssid_str].rssi = rssi;
-//         bssid_map[bssid_str].channel = channel;
-//         bssid_map[bssid_str].beacon_count++;
-//     }
-
-//     // 데이터 출력
-//     cout << "BSSID: " << bssid_str << ", RSSI: " << rssi << ", Channel: " << channel
-//          << ", Beacon Count: " << bssid_map[bssid_str].beacon_count << endl;
-// }
-void parse_radiotap_header(struct dot11 *header, size_t length)
+string bssid_to_string(const uint8_t *bssid)
 {
+    stringstream ss;
+    for (int i = 0; i < 6; ++i)
+    {
+        ss << hex << setw(2) << setfill('0') << static_cast<int>(bssid[i]);
+        if (i < 5)
+            ss << ":";
+    }
+    return ss.str();
+}
+
+void process_beacon_frame(const RadiotapInfo &info)
+{
+    string bssid_str = bssid_to_string(info.bssid_ptr); // BSSID를 string으로 변환하는 함수 필요
+
+    // BSSID 정보 업데이트
+    if (bssid_map.find(bssid_str) == bssid_map.end())
+    {
+        // BSSID가 map에 없으면 새로 추가
+        bssid_map[bssid_str] = {info.rssi, info.channel, 1, info.essid};
+    }
+    else
+    {
+        // 이미 존재하는 BSSID면 정보 업데이트
+        bssid_map[bssid_str].pwr = info.rssi;
+        bssid_map[bssid_str].channel = info.channel;
+        bssid_map[bssid_str].beacons++;
+        bssid_map[bssid_str].essid = info.essid;
+    }
+
+    // 데이터 출력
+    cout << "BSSID: " << bssid_str << ", RSSI: " << info.rssi << ", Channel: " << info.channel
+         << ", Beacons: " << bssid_map[bssid_str].beacons << ", ESSID: " << info.essid << endl;
+}
+
+RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
+{
+    RadiotapInfo info;
     // Check version
     if (header->it_version != 0)
     {
         printf("packet's version must be 0 \n");
-        return;
+        return RadiotapInfo();
+        ;
     }
 
     uint32_t present = header->it_present;
@@ -301,7 +326,8 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
             }
             // 채널 번호 사용
 
-            printf("channel: %d\n", channel);
+            // printf("channel: %d\n", channel);
+            info.channel = channel;
 
             break;
         case IEEE80211_RADIOTAP_FHSS:
@@ -392,7 +418,8 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
         if (rssi_updated)
         {
             int8_t final_rssi = rssi - antenna_noise; // 노이즈가 없으면 0으로 가정
-            printf("Final Antenna Signal (RSSI): %d dBm\n", final_rssi);
+            // printf("Final Antenna Signal (RSSI): %d dBm\n", final_rssi);
+            info.rssi = final_rssi;
             rssi_updated = false;
             antenna_noise = 0;
         }
@@ -401,21 +428,23 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
     if (length < offset + 16)
     {
         printf("Packet too short for BSSID\n");
-        return;
+        return RadiotapInfo();
     }
     // printf("offset1: %d\n", offset);
 
     const uint8_t *frame_ptr = reinterpret_cast<const uint8_t *>(header) + radiolength; // beacon frame
     const uint8_t *bssid_ptr = frame_ptr + 16;
 
-    printf("BSSID: ");
-    for (int i = 0; i < 6; ++i)
-    {
-        printf("%02x", bssid_ptr[i]);
-        if (i < 5)
-            printf(":");
-    }
-    printf("\n");
+    info.bssid_ptr = bssid_ptr;
+
+    // printf("BSSID: ");
+    // for (int i = 0; i < 6; ++i)
+    // {
+    //     printf("%02x", bssid_ptr[i]);
+    //     if (i < 5)
+    //         printf(":");
+    // }
+    // printf("\n");
 
     const size_t ieee80211_header_length = 24;
 
@@ -432,22 +461,26 @@ void parse_radiotap_header(struct dot11 *header, size_t length)
     const uint8_t *essid_content_ptr = reinterpret_cast<const uint8_t *>(essid_ptr) + 2;
     uint8_t essid_content = *essid_content_ptr;
 
-    printf("essid length: %d\n", essid_len);
-
-    printf("essid: ");
-
+    string essid;
     for (int i = 0; i < essid_len; ++i)
     {
-        printf("%c", essid_content_ptr[i]);
-        printf("");
+        essid += static_cast<char>(essid_content_ptr[i]);
     }
-    printf("\n");
 
-    printf("=================================================================");
+    info.essid = essid;
 
-    // beacon frame
+    // printf("essid length: %d\n", essid_len);
 
-    // 16bytes 뒤에 beacon frame의 BSSID 존재함.
+    // printf("essid: ");
+
+    // for (int i = 0; i < essid_len; ++i)
+    // {
+    //     printf("%c", essid_content_ptr[i]);
+    //     printf("");
+    // }
+    // printf("\n");
+
+    return info;
 }
 
 int main(int argc, char *argv[])
@@ -492,28 +525,21 @@ int main(int argc, char *argv[])
 
         // reply1 = reinterpret_cast<>(const_cast<u_char*>(reply_packet1));
 
-        printf("%u bytes captured\n", header->caplen); // packet's lengt
+        // printf("%u bytes captured\n", header->caplen); // packet's lengt
 
         struct dot11 *radiotap_hdr = (struct dot11 *)packet;
         const size_t ieee80211_header_length = 24;
 
         if (!check_beacon_frame(reinterpret_cast<const uint8_t *>(radiotap_hdr) + (radiotap_hdr->it_len), header->caplen - (radiotap_hdr->it_len)))
         {
-            printf("this's not a beacon\n");
+            // printf("this's not a beacon\n");
             continue;
         }
-        printf("this's a beacon\n");
+        // printf("this's a beacon\n");
 
-        parse_radiotap_header(radiotap_hdr, header->caplen);
+        RadiotapInfo info = parse_radiotap_header(radiotap_hdr, header->caplen);
 
-        // print_dot11(radiotap_hdr);
-
-        // for (int i = 0; i < (header->caplen); i++)
-        // {
-        //     printf("%02x ", packet[i]);
-        // }
-
-        // printf("\n");
+        process_beacon_frame(info);
     }
 
     return 0;
