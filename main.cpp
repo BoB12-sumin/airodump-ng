@@ -113,10 +113,19 @@ void process_beacon_frame(const RadiotapInfo &info)
         bssid_map[bssid_str].beacons++;
         bssid_map[bssid_str].essid = info.essid;
     }
-
+    cout << "\033[2J\033[1;1H";
     // 데이터 출력
-    cout << "BSSID: " << bssid_str << ", RSSI: " << info.rssi << ", Channel: " << info.channel
-         << ", Beacons: " << bssid_map[bssid_str].beacons << ", ESSID: " << info.essid << endl;
+    for (const auto &pair : bssid_map)
+    {
+        const string &bssid = pair.first;
+        const BSSID_Info &info = pair.second;
+        cout << "BSSID: " << bssid
+             << ", RSSI: " << info.pwr
+             << ", Channel: " << info.channel
+             << ", Beacons: " << info.beacons
+             << ", ESSID: " << info.essid
+             << endl;
+    }
 }
 
 RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
@@ -494,9 +503,9 @@ int main(int argc, char *argv[])
     char *dev = argv[1];
 
     char errbuf[PCAP_ERRBUF_SIZE];
-    // pcap_t *handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+    pcap_t *handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
     // pcap_t *handle = pcap_open_offline("./pcapdir/beacon-a2000ua-testap5g.pcap", errbuf);
-    pcap_t *handle = pcap_open_offline("./pcapdir/dot11-sample.pcap", errbuf);
+    // pcap_t *handle = pcap_open_offline("./pcapdir/dot11-sample.pcap", errbuf);
 
     if (handle == nullptr)
     {
