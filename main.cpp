@@ -45,8 +45,21 @@ struct RadiotapInfo
     string essid;
 };
 
+struct ProbeReqInfo
+{
+    string source_mac; // string으로 변경
+};
+
+struct ProbeResInfo
+{
+    string source_mac; // string으로 변경
+    string dest_mac;   // string으로 변경
+};
 // BSSID를 key로 사용하는 map 생성
 map<string, BSSID_Info> bssid_map;
+
+vector<string> probe_requests; // 모든 프로브 요청을 저장하는 벡터
+vector<pair<string, string>> station_info;
 
 void print_dot11(struct dot11 *my_struct)
 {
@@ -74,6 +87,34 @@ bool check_beacon_frame(const uint8_t *frame_ptr, size_t length)
 
     // Beacon frame의 타입 및 서브타입 값은 0x8000
     return type_sub_type == 0x8000;
+}
+
+bool check_probe_request_frame(const uint8_t *frame_ptr, size_t length)
+{
+    if (length < 2)
+    { // 프레임 타입 및 서브타입을 확인하기 위한 최소 길이
+        return false;
+    }
+
+    const uint16_t *type_sub_type_field = reinterpret_cast<const uint16_t *>(frame_ptr);
+    uint16_t type_sub_type = ntohs(*type_sub_type_field); // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
+
+    // Beacon frame의 타입 및 서브타입 값은 0x8000
+    return type_sub_type == 0x4000;
+}
+
+bool check_probe_response_frame(const uint8_t *frame_ptr, size_t length)
+{
+    if (length < 2)
+    { // 프레임 타입 및 서브타입을 확인하기 위한 최소 길이
+        return false;
+    }
+
+    const uint16_t *type_sub_type_field = reinterpret_cast<const uint16_t *>(frame_ptr);
+    uint16_t type_sub_type = ntohs(*type_sub_type_field); // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
+
+    // Beacon frame의 타입 및 서브타입 값은 0x8000
+    return type_sub_type == 0x5000;
 }
 
 void adjust_offset_for_boundary(size_t &offset, size_t field_size)
@@ -113,20 +154,44 @@ void process_beacon_frame(const RadiotapInfo &info)
         bssid_map[bssid_str].beacons++;
         bssid_map[bssid_str].essid = info.essid;
     }
-    cout << "\033[2J\033[1;1H";
+
     // 데이터 출력
+    puts("BSSID\t\t\tPWR\tBeacons\t\tChannel\t\tESSID");
     for (const auto &pair : bssid_map)
     {
-        const string &bssid = pair.first;
         const BSSID_Info &info = pair.second;
-        cout << "BSSID: " << bssid
-             << ", RSSI: " << info.pwr
-             << ", Channel: " << info.channel
-             << ", Beacons: " << info.beacons
-             << ", ESSID: " << info.essid
-             << endl;
+        printf("%s\t%d\t%d\t\t%d\t\t%s\n", pair.first.c_str(), info.pwr, info.beacons, info.channel, info.essid.c_str());
     }
 }
+
+// void process_station_frame(const ProbeReqInfo &reqInfo, const ProbeResInfo &resInfo)
+// {
+//     string mac_str = bssid_to_string(reqInfo.source_mac); // BSSID를 string으로 변환하는 함수 필요
+
+//     string bssid_str = bssid_to_string(resInfo.source_mac);
+
+//     // BSSID 정보 업데이트
+//     if (station_map.find(bssid_str) == station_map.end())
+//     {
+//         // BSSID가 map에 없으면 새로 추가
+//         station_map[bssid_str] = {mac_str};
+//     }
+//     else
+//     {
+//         // 이미 존재하는 BSSID면 정보 업데이트
+//         station_map[bssid_str].source_mac = mac_str;
+//     }
+
+//     // 데이터 출력
+//     for (const auto &pair : station_map)
+//     {
+//         const string &bssid = pair.first;
+//         const STATION_Info &info = pair.second;
+//         cout << "BSSID: " << bssid
+//              << ", STATION: " << info.source_mac
+//              << endl;
+//     }
+// }
 
 RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
 {
@@ -492,6 +557,73 @@ RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
     return info;
 }
 
+ProbeReqInfo parse_probe_req_header(struct dot11 *header, size_t length)
+{
+    ProbeReqInfo info;
+    if (header->it_version != 0)
+    {
+        printf("packet's version must be 0 \n");
+        return ProbeReqInfo();
+    }
+
+    int radiolength = header->it_len;
+    const size_t mac_offset = radiolength + 10; // 수정: radiolength + IEEE80211 헤더 길이 (24) - 14 (MAC 주소 위치)
+
+    if (length < mac_offset + sizeof(uint8_t) * 6)
+    {
+        printf("Packet too short for source MAC\n");
+        return ProbeReqInfo();
+    }
+
+    const uint8_t *frame_ptr = reinterpret_cast<const uint8_t *>(header) + mac_offset;
+    info.source_mac = bssid_to_string(frame_ptr);
+
+    return info;
+}
+
+ProbeResInfo parse_probe_res_header(struct dot11 *header, size_t length)
+{
+    ProbeResInfo info;
+    if (header->it_version != 0)
+    {
+        printf("packet's version must be 0 \n");
+        return ProbeResInfo();
+    }
+
+    int radiolength = header->it_len;
+    const size_t source_mac_offset = radiolength + 10; // Source MAC address position
+    const size_t dest_mac_offset = radiolength + 4;    // Destination MAC address position
+
+    if (length < source_mac_offset + 6)
+    {
+        printf("Packet too short for source MAC\n");
+        return ProbeResInfo();
+    }
+    const uint8_t *source_mac_ptr = reinterpret_cast<const uint8_t *>(header) + source_mac_offset;
+    if (length < dest_mac_offset + 6)
+    {
+        printf("Packet too short for destination MAC\n");
+        return ProbeResInfo();
+    }
+
+    const uint8_t *dest_mac_ptr = reinterpret_cast<const uint8_t *>(header) + dest_mac_offset;
+    info.source_mac = bssid_to_string(source_mac_ptr);
+    info.dest_mac = bssid_to_string(dest_mac_ptr);
+    return info;
+}
+
+bool isDuplicate(const vector<pair<string, string>> &station_info, const string &reqMac, const string &resMac)
+{
+    for (const auto &info : station_info)
+    {
+        if (info.first == reqMac && info.second == resMac)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2)
@@ -517,6 +649,10 @@ int main(int argc, char *argv[])
     const uint8_t *packet;
     u_char *reply1 = nullptr;
 
+    ProbeReqInfo station_mac_info;
+    ProbeResInfo station_bssid_info;
+    RadiotapInfo info;
+
     while (true)
     {
         int ret = pcap_next_ex(handle, &header, &packet);
@@ -539,16 +675,44 @@ int main(int argc, char *argv[])
         struct dot11 *radiotap_hdr = (struct dot11 *)packet;
         const size_t ieee80211_header_length = 24;
 
-        if (!check_beacon_frame(reinterpret_cast<const uint8_t *>(radiotap_hdr) + (radiotap_hdr->it_len), header->caplen - (radiotap_hdr->it_len)))
+        if (check_beacon_frame(reinterpret_cast<const uint8_t *>(radiotap_hdr) + (radiotap_hdr->it_len), header->caplen - (radiotap_hdr->it_len)))
         {
-            // printf("this's not a beacon\n");
+            info = parse_radiotap_header(radiotap_hdr, header->caplen);
+        }
+        else if (check_probe_request_frame(reinterpret_cast<const uint8_t *>(radiotap_hdr) + (radiotap_hdr->it_len), header->caplen - (radiotap_hdr->it_len)))
+        {
+            station_mac_info = parse_probe_req_header(radiotap_hdr, header->caplen);
+            probe_requests.push_back(station_mac_info.source_mac); // 프로브 요청 MAC 주소 저장
+        }
+        else if (check_probe_response_frame(reinterpret_cast<const uint8_t *>(radiotap_hdr) + (radiotap_hdr->it_len), header->caplen - (radiotap_hdr->it_len)))
+        {
+            station_bssid_info = parse_probe_res_header(radiotap_hdr, header->caplen);
+            for (const auto &reqMac : probe_requests)
+            {
+                if (reqMac == station_bssid_info.dest_mac && !isDuplicate(station_info, station_bssid_info.source_mac, reqMac))
+                {
+                    station_info.push_back(make_pair(station_bssid_info.source_mac, reqMac)); // 일치하는 요청-응답 쌍 저장
+                    break;
+                }
+            }
+        }
+
+        else
+        {
             continue;
         }
+
         // printf("this's a beacon\n");
 
-        RadiotapInfo info = parse_radiotap_header(radiotap_hdr, header->caplen);
+        cout << "\033[2J\033[1;1H";
 
         process_beacon_frame(info);
+
+        puts("\nBSSID\t\t\tSTATION");
+        for (const auto &info : station_info)
+        {
+            printf("%s\t%s\n", info.first.c_str(), info.second.c_str());
+        }
     }
 
     return 0;
