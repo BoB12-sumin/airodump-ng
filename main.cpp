@@ -645,8 +645,7 @@ int main(int argc, char *argv[])
         {
             continue;
         }
-
-        cout << "\033[2J\033[1;1H";
+        system("clear");
 
         process_beacon_frame(info);
 
