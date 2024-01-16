@@ -47,13 +47,13 @@ struct RadiotapInfo
 
 struct ProbeReqInfo
 {
-    string source_mac; // string으로 변경
+    string source_mac;
 };
 
 struct ProbeResInfo
 {
-    string source_mac; // string으로 변경
-    string dest_mac;   // string으로 변경
+    string source_mac;
+    string dest_mac;
 };
 // BSSID를 key로 사용하는 map 생성
 map<string, BSSID_Info> bssid_map;
@@ -78,7 +78,7 @@ void usage()
 bool check_beacon_frame(const uint8_t *frame_ptr, size_t length)
 {
     if (length < 2)
-    { // 프레임 타입 및 서브타입을 확인하기 위한 최소 길이
+    {
         return false;
     }
 
@@ -92,28 +92,26 @@ bool check_beacon_frame(const uint8_t *frame_ptr, size_t length)
 bool check_probe_request_frame(const uint8_t *frame_ptr, size_t length)
 {
     if (length < 2)
-    { // 프레임 타입 및 서브타입을 확인하기 위한 최소 길이
+    {
         return false;
     }
 
     const uint16_t *type_sub_type_field = reinterpret_cast<const uint16_t *>(frame_ptr);
-    uint16_t type_sub_type = ntohs(*type_sub_type_field); // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
+    uint16_t type_sub_type = ntohs(*type_sub_type_field);
 
-    // Beacon frame의 타입 및 서브타입 값은 0x8000
     return type_sub_type == 0x4000;
 }
 
 bool check_probe_response_frame(const uint8_t *frame_ptr, size_t length)
 {
     if (length < 2)
-    { // 프레임 타입 및 서브타입을 확인하기 위한 최소 길이
+    {
         return false;
     }
 
     const uint16_t *type_sub_type_field = reinterpret_cast<const uint16_t *>(frame_ptr);
-    uint16_t type_sub_type = ntohs(*type_sub_type_field); // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
+    uint16_t type_sub_type = ntohs(*type_sub_type_field);
 
-    // Beacon frame의 타입 및 서브타입 값은 0x8000
     return type_sub_type == 0x5000;
 }
 
@@ -163,35 +161,6 @@ void process_beacon_frame(const RadiotapInfo &info)
         printf("%s\t%d\t%d\t\t%d\t\t%s\n", pair.first.c_str(), info.pwr, info.beacons, info.channel, info.essid.c_str());
     }
 }
-
-// void process_station_frame(const ProbeReqInfo &reqInfo, const ProbeResInfo &resInfo)
-// {
-//     string mac_str = bssid_to_string(reqInfo.source_mac); // BSSID를 string으로 변환하는 함수 필요
-
-//     string bssid_str = bssid_to_string(resInfo.source_mac);
-
-//     // BSSID 정보 업데이트
-//     if (station_map.find(bssid_str) == station_map.end())
-//     {
-//         // BSSID가 map에 없으면 새로 추가
-//         station_map[bssid_str] = {mac_str};
-//     }
-//     else
-//     {
-//         // 이미 존재하는 BSSID면 정보 업데이트
-//         station_map[bssid_str].source_mac = mac_str;
-//     }
-
-//     // 데이터 출력
-//     for (const auto &pair : station_map)
-//     {
-//         const string &bssid = pair.first;
-//         const STATION_Info &info = pair.second;
-//         cout << "BSSID: " << bssid
-//              << ", STATION: " << info.source_mac
-//              << endl;
-//     }
-// }
 
 RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
 {
@@ -413,35 +382,35 @@ RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
             rssi_updated = true; // 신호 강도 업데이트
             break;
         case IEEE80211_RADIOTAP_DBM_ANTNOISE:
-            // DBM_ANTNOISE 필드 처리 (필요한 경우)
+            // DBM_ANTNOISE 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_LOCK_QUALITY:
-            // LOCK_QUALITY 필드 처리 (필요한 경우)
+            // LOCK_QUALITY 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_TX_ATTENUATION:
-            // TX_ATTENUATION 필드 처리 (필요한 경우)
+            // TX_ATTENUATION 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_DB_TX_ATTENUATION:
-            // DB_TX_ATTENUATION 필드 처리 (필요한 경우)
+            // DB_TX_ATTENUATION 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_DBM_TX_POWER:
-            // DBM_TX_POWER 필드 처리 (필요한 경우)
+            // DBM_TX_POWER 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_ANTENNA:
-            // ANTENNA 필드 처리 (필요한 경우)
+            // ANTENNA 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_DB_ANTSIGNAL:
-            // DB_ANTSIGNAL 필드 처리 (필요한 경우)
+            // DB_ANTSIGNAL 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_DB_ANTNOISE:
-            // DB_ANTNOISE 필드 처리 (필요한 경우)
+            // DB_ANTNOISE 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_RX_FLAGS:
@@ -461,22 +430,22 @@ RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
 
             break;
         case IEEE80211_RADIOTAP_AMPDU_STATUS:
-            // AMPDU_STATUS 필드 처리 (필요한 경우)
+            // AMPDU_STATUS 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_VHT:
-            // VHT 필드 처리 (필요한 경우)
+            // VHT 필드 처리
 
             break;
         case IEEE80211_RADIOTAP_TIMESTAMP:
-            // TIMESTAMP 필드 처리 (필요한 경우)
+            // TIMESTAMP 필드 처리
 
             break;
             // case IEEE80211_RADIOTAP_RADIOTAP_NAMESPACE:
-            //     // RADIOTAP_NAMESPACE 필드 처리 (필요한 경우)
+            //     // RADIOTAP_NAMESPACE 필드 처리
             //     break;
             // case IEEE80211_RADIOTAP_VENDOR_NAMESPACE:
-            //     // VENDOR_NAMESPACE 필드 처리 (필요한 경우)
+            //     // VENDOR_NAMESPACE 필드 처리
             //     break;
             // case IEEE80211_RADIOTAP_EXT:
             //     // EXT 필드 처리 및 다음 it_present 확인
@@ -484,7 +453,6 @@ RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
             //     // offset += sizeof(uint32_t);
             // break;
         default:
-            // 알 수 없는 필드 처리
             break;
         }
         offset += field.second;
@@ -511,15 +479,6 @@ RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
 
     info.bssid_ptr = bssid_ptr;
 
-    // printf("BSSID: ");
-    // for (int i = 0; i < 6; ++i)
-    // {
-    //     printf("%02x", bssid_ptr[i]);
-    //     if (i < 5)
-    //         printf(":");
-    // }
-    // printf("\n");
-
     const size_t ieee80211_header_length = 24;
 
     // 비콘 프레임 페이로드 시작점
@@ -542,17 +501,6 @@ RadiotapInfo parse_radiotap_header(struct dot11 *header, size_t length)
     }
 
     info.essid = essid;
-
-    // printf("essid length: %d\n", essid_len);
-
-    // printf("essid: ");
-
-    // for (int i = 0; i < essid_len; ++i)
-    // {
-    //     printf("%c", essid_content_ptr[i]);
-    //     printf("");
-    // }
-    // printf("\n");
 
     return info;
 }
@@ -591,8 +539,8 @@ ProbeResInfo parse_probe_res_header(struct dot11 *header, size_t length)
     }
 
     int radiolength = header->it_len;
-    const size_t source_mac_offset = radiolength + 10; // Source MAC address position
-    const size_t dest_mac_offset = radiolength + 4;    // Destination MAC address position
+    const size_t source_mac_offset = radiolength + 10; // Source MAC address offset
+    const size_t dest_mac_offset = radiolength + 4;    // Destination MAC address offset
 
     if (length < source_mac_offset + 6)
     {
@@ -668,10 +616,6 @@ int main(int argc, char *argv[])
             break;
         }
 
-        // reply1 = reinterpret_cast<>(const_cast<u_char*>(reply_packet1));
-
-        // printf("%u bytes captured\n", header->caplen); // packet's lengt
-
         struct dot11 *radiotap_hdr = (struct dot11 *)packet;
         const size_t ieee80211_header_length = 24;
 
@@ -701,8 +645,6 @@ int main(int argc, char *argv[])
         {
             continue;
         }
-
-        // printf("this's a beacon\n");
 
         cout << "\033[2J\033[1;1H";
 
